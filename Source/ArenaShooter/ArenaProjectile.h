@@ -19,6 +19,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	// Runs when the projectile hits something
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 

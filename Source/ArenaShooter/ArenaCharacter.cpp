@@ -3,6 +3,8 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/DamageEvents.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "EnhancedInputComponent.h"
@@ -27,16 +29,18 @@ AArenaCharacter::AArenaCharacter()
 	PlayerMesh -> SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PlayerMesh -> SetRelativeScale3D(FVector(0.8f, 0.8f, 1.9f));
 
+	// Add the temporary static mesh on the player
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	if (CylinderMesh.Succeeded())
 	{
-		PlayerMesh->SetStaticMesh(CylinderMesh.Object);
+		PlayerMesh -> SetStaticMesh(CylinderMesh.Object);
 	}
 
 	Muzzle = CreateDefaultSubobject<USceneComponent>(TEXT("Muzzle"));
 	Muzzle -> SetupAttachment(GetCapsuleComponent());
 	Muzzle -> SetRelativeLocation(FVector(70.f, 30.f, 40.f));
 
+	// A spring arm holds the camera behind the player and rotates w the mouse
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom -> SetupAttachment(GetCapsuleComponent());
 	CameraBoom -> TargetArmLength = 300.f;
@@ -48,9 +52,13 @@ AArenaCharacter::AArenaCharacter()
 	FollowCamera -> bUsePawnControlRotation = false;
 }
 
+// Add input mapping on BeginPlay so the controls activate when the player is spawned
 void AArenaCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Start the player at full health
+	Health = MaxHealth;
 
 	if (APlayerController* PC = Cast<APlayerController>(Controller))
 	{
@@ -64,6 +72,7 @@ void AArenaCharacter::BeginPlay()
 	}
 }
 
+// Bind each input action to a function.
 void AArenaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -78,6 +87,7 @@ void AArenaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	}
 }
 
+// Move the player based on input values
 void AArenaCharacter::Move(const FInputActionValue& Value)
 {
 	const FVector2D Input = Value.Get<FVector2D>();
@@ -93,6 +103,7 @@ void AArenaCharacter::Move(const FInputActionValue& Value)
 	}
 }
 
+// Allows the player to be rotated based on mouse movement.
 void AArenaCharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D Input = Value.Get<FVector2D>();
@@ -101,6 +112,7 @@ void AArenaCharacter::Look(const FInputActionValue& Value)
 	AddControllerPitchInput(Input.Y);
 }
 
+// Spawns a projectile when the fire input action is triggered.
 void AArenaCharacter::Fire()
 {
 	if (!ProjectileClass)
@@ -108,7 +120,8 @@ void AArenaCharacter::Fire()
 		return;
 	}
 
-	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	// Firing Cooldown
+	const float CurrentTime = GetWorld() -> GetTimeSeconds();
 	if (CurrentTime - LastFireTime < FireCooldown)
 	{
 		return;
@@ -120,4 +133,21 @@ void AArenaCharacter::Fire()
 	SpawnParams.Instigator = this;
 
 	GetWorld() -> SpawnActor<AArenaProjectile>(ProjectileClass, Muzzle->GetComponentLocation(), GetControlRotation(), SpawnParams);
+}
+
+// Gets called when an AI projectile hits the player through ApplyDamage
+float AArenaCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	const float DamageTaken = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	// Take away health but stop it from going negative
+	Health = FMath::Clamp(Health - DamageTaken, 0.f, MaxHealth);
+
+	// Display players health
+	if (GEngine)
+	{
+		GEngine -> AddOnScreenDebugMessage(-1, 2.f, FColor::Red, FString::Printf(TEXT("Player Health: %.0f"), Health));
+	}
+
+	return DamageTaken;
 }
