@@ -1,6 +1,8 @@
+Binaries/
 DerivedDataCache/
 Intermediate/
 Saved/
 Binaries/
 .vs/
 *.s1n
+*.code-workspace
